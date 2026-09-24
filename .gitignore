@@ -1,0 +1,35 @@
+# Maven / Java
+target/
+*.class
+*.log
+hs_err_pid*
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Python (model-training)
+.venv/
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Datasets (Kaggle creditcard.csv ~150MB — never commit)
+*.csv
+model-training/data/
+
+# Secrets
+.env
+kaggle.json
