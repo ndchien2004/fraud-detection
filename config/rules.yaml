@@ -1,0 +1,25 @@
+# Fraud rules, applied top to bottom: the first matching rule decides (CHO_QUA / XEM_XET / CHAN).
+# If no rule matches, the ML model scores the transaction and ml_thresholds decide.
+#
+# This file is re-read automatically within a few seconds of saving it: no rebuild or restart needed.
+#
+# Variables usable in a condition (Spring Expression Language):
+#   amount, merchant, cardId,
+#   so_giao_dich_5_phut, tong_tien_1_gio, trung_binh_lich_su,
+#   lech_so_voi_trung_binh, khoang_cach_bat_thuong
+# Examples: "amount > 50000000 and merchant == 'ATM'", "lech_so_voi_trung_binh > 30"
+
+rules:
+  - name: "qua_nhieu_giao_dich"
+    condition: "so_giao_dich_5_phut > 5"
+    action: "CHAN"
+  - name: "di_chuyen_bat_kha_thi"
+    condition: "khoang_cach_bat_thuong == true"
+    action: "CHAN"
+  - name: "chi_tieu_qua_cao_tuyet_doi"
+    condition: "amount > 50000000"
+    action: "XEM_XET"
+
+ml_thresholds:
+  chan_neu_diem_tren: 0.8
+  xem_xet_neu_diem_tren: 0.4

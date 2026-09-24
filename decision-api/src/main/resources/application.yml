@@ -1,0 +1,33 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: decision-api
+  mvc:
+    problemdetails:
+      enabled: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
+        linger.ms: 5
+        max.block.ms: 5000
+
+app:
+  scoring:
+    url: ${SCORING_URL:http://localhost:8083}
+    connect-timeout-ms: 500
+    read-timeout-ms: 1000
+  topics:
+    transactions: transactions
+    decisions: decisions
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

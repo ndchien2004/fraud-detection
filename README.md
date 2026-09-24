@@ -16,7 +16,7 @@ Java 21 · Spring Boot 3.5 · Apache Kafka (KRaft) + Kafka Streams · Redis · O
 - [x] Phase 1: `common` + `tx-simulator` backend
 - [x] Phase 2: `feature-service` (Kafka Streams, 2/5 chỉ số)
 - [x] Phase 3: Đủ 5/5 chỉ số
-- [ ] Phase 4: `scoring-service` (rules.yaml) + `decision-api`
+- [x] Phase 4: `scoring-service` (rules.yaml) + `decision-api`
 - [ ] Phase 5: Train model (Kaggle) + tích hợp ONNX
 - [ ] Phase 6: Simulator UI
 - [ ] Phase 7: Dashboard
@@ -109,3 +109,32 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8084/features/preview -Cont
 ```
 
 State cục bộ (RocksDB) nằm ở `~/.fraud-detection/kafka-streams`. Xoá thư mục này cũng không mất dữ liệu: khi khởi động lại, Kafka Streams tự dựng lại state từ changelog topic `feature-service-card-state-store-changelog`.
+
+## Chạy scoring-service (:8083) + decision-api (:8082)
+
+```
+POST /check-transaction ─> decision-api ─> scoring-service ─> Redis (chỉ số)
+                               │               └─> rules.yaml → nếu không rule nào khớp → model → ml_thresholds
+                               └─> Kafka: "transactions" (để feature-service học) + "decisions" (cho dashboard)
+```
+
+decision-api ghi giao dịch vào Kafka **sau khi** chấm điểm, nên dù client nào gọi (UI, curl, Gatling) thì mọi giao dịch cũng được đếm cho các lần sau. Nếu scoring-service không trả lời trong 1 giây, quyết định mặc định là `XEM_XET` với `triggeredRule = "scoring_unavailable"`.
+
+Cần chạy cùng feature-service (4 terminal: feature-service, scoring-service, decision-api, và một terminal để gọi API):
+
+```powershell
+.\mvnw.cmd -pl feature-service spring-boot:run
+.\mvnw.cmd -pl scoring-service spring-boot:run
+.\mvnw.cmd -pl decision-api spring-boot:run
+```
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:8082/check-transaction -ContentType "application/json" -Body '{"transactionId":"tx-000123","cardId":"card-0007","amount":25000000,"merchant":"ATM","location":{"lat":21.0285,"lon":105.8542}}'
+
+Invoke-RestMethod http://localhost:8083/admin/rules                  # rules đang có hiệu lực
+Invoke-RestMethod -Method Post -Uri http://localhost:8083/admin/reload-rules   # reload ngay, không cần đợi
+```
+
+### rules.yaml
+
+[config/rules.yaml](config/rules.yaml) được đọc lại tự động trong vòng 5 giây sau khi lưu, không cần build hay restart. Rule được áp từ trên xuống, rule đầu tiên khớp sẽ quyết định. Nếu file bị sửa sai (lỗi YAML, sai tên biến), scoring-service ghi log lỗi và **giữ nguyên rules cũ**.

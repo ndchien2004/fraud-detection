@@ -1,0 +1,26 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: scoring-service
+  mvc:
+    problemdetails:
+      enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6380}
+
+app:
+  rules:
+    # relative to the module folder when started with `mvnw -pl scoring-service spring-boot:run`
+    file: ${RULES_FILE:../config/rules.yaml}
+    # how often the file's modification time is checked
+    reload-interval-ms: 5000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
