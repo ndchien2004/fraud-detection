@@ -15,7 +15,7 @@ Java 21 · Spring Boot 3.5 · Apache Kafka (KRaft) + Kafka Streams · Redis · O
 - [x] Phase 0: Khởi tạo repo & hạ tầng (Kafka, Redis, Kafka UI)
 - [x] Phase 1: `common` + `tx-simulator` backend
 - [x] Phase 2: `feature-service` (Kafka Streams, 2/5 chỉ số)
-- [ ] Phase 3: Đủ 5/5 chỉ số
+- [x] Phase 3: Đủ 5/5 chỉ số
 - [ ] Phase 4: `scoring-service` (rules.yaml) + `decision-api`
 - [ ] Phase 5: Train model (Kaggle) + tích hợp ONNX
 - [ ] Phase 6: Simulator UI
@@ -29,7 +29,7 @@ Java 21 · Spring Boot 3.5 · Apache Kafka (KRaft) + Kafka Streams · Redis · O
 Yêu cầu: Docker Desktop, JDK 21+.
 
 ```bash
-docker compose up -d        # Kafka :9092, Redis :6379, Kafka UI :8090
+docker compose up -d        # Kafka :9092, Redis :6380, Kafka UI :8090
 ./mvnw verify               # build + test (Windows: mvnw.cmd verify)
 ```
 
@@ -37,7 +37,7 @@ docker compose up -d        # Kafka :9092, Redis :6379, Kafka UI :8090
 |---|---|
 | Kafka (từ máy host) | `localhost:9092` |
 | Kafka (giữa các container) | `kafka:29092` |
-| Redis | `localhost:6379` |
+| Redis (từ máy host) | `localhost:6380` (trong container vẫn là 6379) |
 | Kafka UI | http://localhost:8090 |
 
 ## Chạy tx-simulator (:8080)
@@ -89,5 +89,23 @@ docker exec redis redis-cli HGETALL card:card-0005:state      # dữ liệu thô
 ```
 
 PowerShell: `Invoke-RestMethod http://localhost:8084/features/card-0005` (lệnh `docker exec ...` giữ nguyên).
+
+### 5 chỉ số
+
+Công thức nằm trong [FeatureCalculator](common/src/main/java/com/frauddetection/common/FeatureCalculator.java), dùng chung cho feature-service và scoring-service.
+
+| Chỉ số | Cách tính |
+|---|---|
+| `so_giao_dich_5_phut` | số giao dịch trong 5 phút trước + giao dịch hiện tại |
+| `tong_tien_1_gio` | tổng tiền trong 1 giờ trước + giao dịch hiện tại |
+| `trung_binh_lich_su` | trung bình 30 ngày, được `HistorySeeder` nạp vào `card:{id}:avg` lúc khởi động |
+| `lech_so_voi_trung_binh` | `(amount - avg) / avg`, ví dụ gấp 20 lần trung bình → `19.0` |
+| `khoang_cach_bat_thuong` | Haversine(vị trí trước, vị trí hiện tại) / thời gian > 900 km/h, chỉ xét khi cách nhau ≥ 50 km |
+
+Xem trước 5 chỉ số của một giao dịch giả định (không lưu gì cả):
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:8084/features/preview -ContentType "application/json" -Body '{"cardId":"card-0007","amount":26000000,"city":"HO_CHI_MINH"}'
+```
 
 State cục bộ (RocksDB) nằm ở `~/.fraud-detection/kafka-streams`. Xoá thư mục này cũng không mất dữ liệu: khi khởi động lại, Kafka Streams tự dựng lại state từ changelog topic `feature-service-card-state-store-changelog`.

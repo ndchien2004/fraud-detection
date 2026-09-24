@@ -18,7 +18,8 @@ import org.springframework.stereotype.Repository;
 
 /**
  * Stores each card's state as a Redis hash {@code card:{cardId}:state} with fields
- * {@code buckets} (JSON), {@code lastLat}, {@code lastLon}, {@code lastTs}.
+ * {@code buckets} (JSON), {@code lastLat}, {@code lastLon}, {@code lastTs}, and the 30-day
+ * average as a plain string {@code card:{cardId}:avg}.
  */
 @Repository
 public class RedisCardStateRepository implements CardStateSink {
@@ -39,6 +40,21 @@ public class RedisCardStateRepository implements CardStateSink {
 
     public static String key(String cardId) {
         return "card:" + cardId + ":state";
+    }
+
+    public static String averageKey(String cardId) {
+        return "card:" + cardId + ":avg";
+    }
+
+    /** No TTL: the average is refreshed by the (simulated) offline job, not by traffic. */
+    public void saveAverage(String cardId, double average) {
+        redis.opsForValue().set(averageKey(cardId), String.valueOf(average));
+    }
+
+    /** 30-day average amount, or 0 when unknown (e.g. a card that is not simulated). */
+    public double findAverage(String cardId) {
+        String value = redis.opsForValue().get(averageKey(cardId));
+        return value != null ? Double.parseDouble(value) : 0;
     }
 
     @Override

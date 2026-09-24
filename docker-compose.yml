@@ -35,7 +35,7 @@ services:
     image: redis:8.8-alpine
     container_name: redis
     ports:
-      - "6379:6379"
+      - "6380:6379"   # 6380 on the host: 6379 is often taken by other projects' Redis
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
