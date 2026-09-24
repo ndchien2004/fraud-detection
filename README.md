@@ -13,7 +13,7 @@ Java 21 · Spring Boot 3.5 · Apache Kafka (KRaft) + Kafka Streams · Redis · O
 ## Tiến độ
 
 - [x] Phase 0: Khởi tạo repo & hạ tầng (Kafka, Redis, Kafka UI)
-- [ ] Phase 1: `common` + `tx-simulator` backend
+- [x] Phase 1: `common` + `tx-simulator` backend
 - [ ] Phase 2: `feature-service` (Kafka Streams, 2/5 chỉ số)
 - [ ] Phase 3: Đủ 5/5 chỉ số
 - [ ] Phase 4: `scoring-service` (rules.yaml) + `decision-api`
@@ -39,3 +39,25 @@ docker compose up -d        # Kafka :9092, Redis :6379, Kafka UI :8090
 | Kafka (giữa các container) | `kafka:29092` |
 | Redis | `localhost:6379` |
 | Kafka UI | http://localhost:8090 |
+
+## Chạy tx-simulator (:8080)
+
+```bash
+./mvnw install -DskipTests            # lần đầu, hoặc sau khi sửa module common
+./mvnw -pl tx-simulator spring-boot:run
+```
+
+```bash
+# gửi 1 giao dịch thủ công -> trả về transaction + partition/offset Kafka đã lưu
+curl -X POST localhost:8080/simulator/manual-transaction -H "Content-Type: application/json" \
+  -d '{"cardId":"card-0007","amount":25000000,"merchant":"ATM","city":"HA_NOI"}'
+
+# bật / tắt auto mode (1..500 giao dịch/giây)
+curl -X POST localhost:8080/simulator/auto-mode -H "Content-Type: application/json" -d '{"enabled":true,"ratePerSecond":50}'
+curl -X POST localhost:8080/simulator/auto-mode -H "Content-Type: application/json" -d '{"enabled":false}'
+
+curl localhost:8080/simulator/stats     # tổng số đã gửi
+curl localhost:8080/simulator/catalog   # danh sách thẻ, merchant, thành phố
+```
+
+Xem message trong topic `transactions` tại Kafka UI → Topics → transactions → Messages.
