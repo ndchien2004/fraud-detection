@@ -1,0 +1,33 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: feature-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    streams:
+      # also the consumer group id and the prefix of internal topics / state directory
+      application-id: feature-service
+      # local RocksDB copy of the aggregates; rebuilt from the changelog topic if deleted
+      state-dir: ${KAFKA_STREAMS_STATE_DIR:${user.home}/.fraud-detection/kafka-streams}
+      properties:
+        # flush aggregates (and therefore Redis writes) every 100 ms instead of the default 30 s,
+        # so a scoring request one second later already sees the previous transactions
+        commit.interval.ms: 100
+        # a malformed message is logged and skipped instead of crashing the stream
+        default.deserialization.exception.handler: org.apache.kafka.streams.errors.LogAndContinueExceptionHandler
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: 6379
+
+app:
+  topics:
+    transactions: transactions
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
