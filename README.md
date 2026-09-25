@@ -21,7 +21,7 @@ Java 21 · Spring Boot 3.5 · Apache Kafka (KRaft) + Kafka Streams · Redis · O
 - [x] Phase 6: Simulator UI
 - [x] Phase 7: Dashboard
 - [x] Phase 8: Docker hoá toàn bộ
-- [ ] Phase 9: Load test Gatling
+- [x] Phase 9: Load test Gatling ([LOAD_TEST.md](LOAD_TEST.md))
 - [ ] Phase 10: README hoàn chỉnh
 
 ## Chạy toàn bộ hệ thống bằng Docker (một lệnh)

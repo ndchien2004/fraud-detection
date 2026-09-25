@@ -47,4 +47,15 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <profiles>
+        <!-- Gatling load test, kept out of the normal build and of the Docker images:
+             .\mvnw.cmd -Pload-test -pl load-test gatling:test -->
+        <profile>
+            <id>load-test</id>
+            <modules>
+                <module>load-test</module>
+            </modules>
+        </profile>
+    </profiles>
 </project>
