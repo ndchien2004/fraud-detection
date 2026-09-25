@@ -276,6 +276,8 @@ function connect() {
 
 // ---------- start ----------
 
+$("dashboard-link").href = `${location.protocol}//${location.hostname}:8081/`;
+
 loadCatalog().catch((e) => alert(`Không tải được danh sách thẻ: ${e.message}`));
 connect();
 refreshStats();

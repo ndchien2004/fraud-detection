@@ -19,7 +19,7 @@ Java 21 · Spring Boot 3.5 · Apache Kafka (KRaft) + Kafka Streams · Redis · O
 - [x] Phase 4: `scoring-service` (rules.yaml) + `decision-api`
 - [x] Phase 5: Train model (Kaggle) + tích hợp ONNX
 - [x] Phase 6: Simulator UI
-- [ ] Phase 7: Dashboard
+- [x] Phase 7: Dashboard
 - [ ] Phase 8: Docker hoá toàn bộ
 - [ ] Phase 9: Load test Gatling
 - [ ] Phase 10: README hoàn chỉnh
@@ -82,6 +82,25 @@ Invoke-RestMethod http://localhost:8080/simulator/stats
 ```
 
 WebSocket (STOMP): `ws://localhost:8080/ws/live-feed`, gồm topic `/topic/live-feed` (lô giao dịch mỗi 250 ms) và `/topic/scenario` (tiến trình kịch bản).
+
+## Dashboard (:8081)
+
+Mở http://localhost:8081 (cần decision-api đang chạy và có traffic, ví dụ bật Auto Mode ở Simulator).
+
+| Phần | Nội dung |
+|---|---|
+| 4 ô số liệu | giao dịch/giây (trung bình 5 giây), tổng giao dịch 1 giờ, tỷ lệ CHAN 1 giờ, latency p99 trong 1 phút |
+| Giao dịch mỗi giây | 5 phút gần nhất, từng giây |
+| Tỷ lệ CHAN và XEM_XET | % trên tổng giao dịch, trượt theo cửa sổ 10 giây |
+| Latency | p50 và p99 của decision-api theo từng giây |
+| Top 10 rủi ro | 10 giao dịch điểm cao nhất trong 1 giờ (rule CHAN = 1.00) |
+
+Cách hoạt động:
+
+- Dashboard có **consumer group riêng** (`dashboard`) đọc topic `decisions`, nên không lấy mất message của ai.
+- Số liệu nằm trong RAM, dưới dạng các "vòng" có kích thước cố định: 3.600 ô 1 giây (đếm quyết định + histogram latency 1 ms) và 60 ô 1 phút (top 10 mỗi phút). Bộ nhớ không đổi dù traffic là 1 hay 500 giao dịch/giây.
+- Mỗi lần khởi động, dashboard **tua Kafka về 1 giờ trước** (`seekToTimestamp`) rồi đọc lại, nên biểu đồ không bị trống sau khi restart.
+- Mỗi giây server đẩy một bản tổng hợp qua WebSocket/STOMP (`/ws/metrics`, topic `/topic/metrics`). Cùng dữ liệu đó cũng có ở `GET /api/metrics`.
 
 ## Chạy feature-service (:8084)
 

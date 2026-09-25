@@ -54,6 +54,8 @@ code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
 }
 .subtitle { margin: 2px 0 0; color: var(--muted); }
 
+.top-right { display: flex; align-items: center; gap: 20px; white-space: nowrap; }
+.top-right a { color: var(--accent); }
 .ws-status { display: flex; align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; }
 .ws-status .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--review); }
 .ws-status[data-state="connected"] .dot { background: var(--ok); }

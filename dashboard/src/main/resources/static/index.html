@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fraud Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div>
+    <h1>Fraud Dashboard</h1>
+    <p class="subtitle">Số liệu real-time từ topic Kafka <code>decisions</code> · 5 phút gần nhất, tổng hợp 1 giờ</p>
+  </div>
+  <div class="top-right">
+    <a href="#" id="simulator-link">Mở Simulator ↗</a>
+    <div id="ws-status" class="ws-status" data-state="connecting"><span class="dot"></span><span class="label">Đang kết nối...</span></div>
+  </div>
+</header>
+
+<main class="viz-root">
+  <section class="tiles" aria-label="Chỉ số chính">
+    <div class="tile">
+      <span class="tile-label">Giao dịch / giây</span>
+      <span class="tile-value" id="kpi-tps">–</span>
+      <span class="tile-sub">trung bình 5 giây gần nhất</span>
+    </div>
+    <div class="tile">
+      <span class="tile-label">Tổng giao dịch · 1 giờ</span>
+      <span class="tile-value" id="kpi-total">–</span>
+      <span class="tile-sub" id="kpi-total-sub">&nbsp;</span>
+    </div>
+    <div class="tile">
+      <span class="tile-label">Tỷ lệ CHAN · 1 giờ</span>
+      <span class="tile-value" id="kpi-block">–</span>
+      <span class="tile-sub" id="kpi-review">&nbsp;</span>
+    </div>
+    <div class="tile">
+      <span class="tile-label">Latency p99 · 1 phút</span>
+      <span class="tile-value" id="kpi-p99">–</span>
+      <span class="tile-sub" id="kpi-latency-sub">&nbsp;</span>
+    </div>
+  </section>
+
+  <section class="charts">
+    <figure class="panel">
+      <figcaption>
+        <h2>Giao dịch mỗi giây</h2>
+        <p>Số quyết định decision-api trả ra trong từng giây</p>
+      </figcaption>
+      <div class="chart-box"><canvas id="chart-tps" role="img" aria-label="Biểu đồ số giao dịch mỗi giây trong 5 phút gần nhất"></canvas></div>
+    </figure>
+    <figure class="panel">
+      <figcaption>
+        <h2>Tỷ lệ CHAN và XEM_XET</h2>
+        <p>% trên tổng giao dịch, trượt theo cửa sổ 10 giây</p>
+      </figcaption>
+      <div class="chart-box"><canvas id="chart-rate" role="img" aria-label="Biểu đồ tỷ lệ chặn và xem xét theo thời gian"></canvas></div>
+    </figure>
+    <figure class="panel">
+      <figcaption>
+        <h2>Latency của decision-api</h2>
+        <p>p50 (trung vị) và p99 theo từng giây, đơn vị ms</p>
+      </figcaption>
+      <div class="chart-box"><canvas id="chart-latency" role="img" aria-label="Biểu đồ latency p50 và p99 theo thời gian"></canvas></div>
+    </figure>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>Top 10 giao dịch rủi ro cao nhất · 1 giờ</h2>
+        <p class="muted">Xếp theo điểm ML (giao dịch bị rule chặn tính là 1.00, rule đưa vào xem xét tính là 0.60); cùng điểm thì số tiền lớn hơn xếp trước</p>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Thời gian</th><th>Mã GD</th><th>Thẻ</th><th class="num">Số tiền</th><th>Merchant</th><th>Quyết định</th><th class="num">Điểm</th><th>Rule</th></tr></thead>
+        <tbody id="top-rows"></tbody>
+      </table>
+      <p class="empty" id="top-empty">Chưa có giao dịch trong 1 giờ qua. Mở Simulator và bật chế độ tự động hoặc chạy một kịch bản.</p>
+    </div>
+  </section>
+</main>
+
+<script src="vendor/chart.umd.min.js"></script>
+<script src="vendor/stomp.umd.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

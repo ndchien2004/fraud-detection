@@ -23,6 +23,7 @@
         <module>feature-service</module>
         <module>scoring-service</module>
         <module>decision-api</module>
+        <module>dashboard</module>
     </modules>
 
     <properties>

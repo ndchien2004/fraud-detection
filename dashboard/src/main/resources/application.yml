@@ -1,0 +1,34 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: dashboard
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      # its own consumer group: reading "decisions" here takes nothing away from any other reader
+      group-id: dashboard
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # a malformed message becomes null instead of blocking the partition forever
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      max-poll-records: 2000
+      properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.value.default.type: com.frauddetection.common.DecisionEvent
+        spring.json.use.type.headers: false
+        spring.json.trusted.packages: com.frauddetection.common
+    listener:
+      type: batch
+
+app:
+  topics:
+    decisions: decisions
+  # how often the browser receives a fresh snapshot
+  push-interval-ms: 1000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

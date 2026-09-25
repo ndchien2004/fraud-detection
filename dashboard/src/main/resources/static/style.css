@@ -1,0 +1,134 @@
+/* Chart roles follow the reference data-viz palette: categorical slots 1-2 for series,
+   status colors (critical / warning) for CHAN / XEM_XET, always paired with a text label. */
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface-1: #fcfcfb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --status-critical: #d03b3b;
+  --status-warning: #fab219;
+  --status-good: #0ca30c;
+  --badge-ok-bg: #e3f5ec;
+  --badge-ok-text: #006300;
+  --badge-review-bg: #fff3d6;
+  --badge-review-text: #8a5a00;
+  --badge-block-bg: #fde8e6;
+  --badge-block-text: #b42318;
+  --link: #256abf;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface-1: #1a1a19;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --badge-ok-bg: #173327;
+    --badge-ok-text: #5fd39a;
+    --badge-review-bg: #3a2e12;
+    --badge-review-text: #f3c05b;
+    --badge-block-bg: #3d1b19;
+    --badge-block-text: #ff8a80;
+    --link: #86b6ef;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface-1: #1a1a19;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --badge-ok-bg: #173327;
+  --badge-ok-text: #5fd39a;
+  --badge-review-bg: #3a2e12;
+  --badge-review-text: #f3c05b;
+  --badge-block-bg: #3d1b19;
+  --badge-block-text: #ff8a80;
+  --link: #86b6ef;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text-primary);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 15px; margin: 0; }
+code { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+a { color: var(--link); }
+.muted, figcaption p { color: var(--text-secondary); margin: 2px 0 0; font-size: 13px; }
+
+.topbar {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  padding: 16px 24px; background: var(--surface-1); border-bottom: 1px solid var(--border);
+}
+.subtitle { margin: 2px 0 0; color: var(--text-secondary); }
+.top-right { display: flex; align-items: center; gap: 20px; white-space: nowrap; }
+.ws-status { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); }
+.ws-status .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--status-warning); }
+.ws-status[data-state="connected"] .dot { background: var(--status-good); }
+.ws-status[data-state="disconnected"] .dot { background: var(--status-critical); }
+
+.viz-root { max-width: 1400px; margin: 0 auto; padding: 16px 24px 32px; display: grid; gap: 16px; }
+
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.tile, .panel {
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; min-width: 0;
+}
+.tile { padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
+.tile-label { color: var(--text-secondary); font-size: 13px; }
+.tile-value { font-size: 30px; font-weight: 700; line-height: 1.2; }
+.tile-sub { color: var(--text-muted); font-size: 12px; }
+
+.charts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.panel { padding: 14px 16px; margin: 0; }
+.chart-box { position: relative; height: 240px; margin-top: 10px; }
+.panel-head { margin-bottom: 10px; }
+
+.table-wrap { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table th {
+  text-align: left; color: var(--text-muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--axis);
+}
+.table td { padding: 6px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+.table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.empty { color: var(--text-muted); text-align: center; padding: 18px 0; margin: 0; }
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.badge.CHO_QUA { background: var(--badge-ok-bg); color: var(--badge-ok-text); }
+.badge.XEM_XET { background: var(--badge-review-bg); color: var(--badge-review-text); }
+.badge.CHAN { background: var(--badge-block-bg); color: var(--badge-block-text); }
+
+@media (max-width: 1100px) {
+  .charts { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .viz-root { padding: 12px 16px 24px; }
+  .topbar { padding: 12px 16px; flex-direction: column; align-items: flex-start; }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
