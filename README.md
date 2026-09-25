@@ -18,7 +18,7 @@ Java 21 · Spring Boot 3.5 · Apache Kafka (KRaft) + Kafka Streams · Redis · O
 - [x] Phase 3: Đủ 5/5 chỉ số
 - [x] Phase 4: `scoring-service` (rules.yaml) + `decision-api`
 - [x] Phase 5: Train model (Kaggle) + tích hợp ONNX
-- [ ] Phase 6: Simulator UI
+- [x] Phase 6: Simulator UI
 - [ ] Phase 7: Dashboard
 - [ ] Phase 8: Docker hoá toàn bộ
 - [ ] Phase 9: Load test Gatling
@@ -40,42 +40,48 @@ docker compose up -d        # Kafka :9092, Redis :6380, Kafka UI :8090
 | Redis (từ máy host) | `localhost:6380` (trong container vẫn là 6379) |
 | Kafka UI | http://localhost:8090 |
 
-## Chạy tx-simulator (:8080)
+## Simulator UI (:8080)
 
-```bash
-./mvnw install -DskipTests            # lần đầu, hoặc sau khi sửa module common
-./mvnw -pl tx-simulator spring-boot:run
+Trang web thao tác: gửi giao dịch thủ công, chạy 3 kịch bản gian lận, bật chế độ tự động, và xem Live Feed cập nhật real-time qua WebSocket.
+
+Cần chạy **đủ 4 service** (mỗi service một terminal), rồi mở http://localhost:8080:
+
+```powershell
+.\mvnw.cmd install -DskipTests            # lần đầu, hoặc sau khi sửa module common
+.\mvnw.cmd -pl feature-service spring-boot:run
+.\mvnw.cmd -pl scoring-service spring-boot:run
+.\mvnw.cmd -pl decision-api spring-boot:run
+.\mvnw.cmd -pl tx-simulator spring-boot:run
 ```
 
-> **Windows:** trong PowerShell 5.1, `curl` thực chất là `Invoke-WebRequest` và không hiểu `-X/-H/-d`.
-> Hãy dùng khối lệnh PowerShell bên dưới, hoặc mở terminal **Git Bash** để chạy các lệnh `curl`.
+Mọi giao dịch của simulator đều đi qua `POST /check-transaction` của decision-api. decision-api ghi giao dịch vào Kafka **sau khi** chấm điểm, nên simulator không cần nói chuyện trực tiếp với Kafka.
 
-Git Bash / Linux / macOS:
-```bash
-# gửi 1 giao dịch thủ công -> trả về transaction + partition/offset Kafka đã lưu
-curl -X POST localhost:8080/simulator/manual-transaction -H "Content-Type: application/json" \
-  -d '{"cardId":"card-0007","amount":25000000,"merchant":"ATM","city":"HA_NOI"}'
+| Khu vực | Hoạt động |
+|---|---|
+| Chế độ tự động | 1–500 giao dịch/giây trên **50.000 thẻ nền** (`bg-00001`…`bg-50000`), trong đó ~2% cố tình bất thường (số tiền gấp 10–30 lần, hoặc thanh toán ở nước ngoài) |
+| Gửi thủ công | 20 thẻ demo `card-0001`…`card-0020`, trả về quyết định + 5 chỉ số + latency |
+| Kịch bản | Quẹt dồn dập (10 giao dịch/10 giây → từ giao dịch 6 bị CHAN), Impossible travel (Hà Nội → TP.HCM sau 2 phút → giao dịch 2 bị CHAN), Chi tiêu bất thường (gấp 20 lần trung bình → XEM_XET/CHAN) |
+| Nhật ký thời gian thực | 100 giao dịch mới nhất, tô màu theo quyết định; có nút tạm dừng và lọc bỏ CHO_QUA |
 
-# bật / tắt auto mode (1..500 giao dịch/giây)
-curl -X POST localhost:8080/simulator/auto-mode -H "Content-Type: application/json" -d '{"enabled":true,"ratePerSecond":50}'
-curl -X POST localhost:8080/simulator/auto-mode -H "Content-Type: application/json" -d '{"enabled":false}'
+**Vì sao Auto Mode không dùng 20 thẻ như đề bài?** Rule `so_giao_dich_5_phut > 5` chỉ cho mỗi thẻ khoảng 1 giao dịch/phút. Với 20 thẻ, chỉ cần khoảng 0,3 giao dịch/giây là thẻ nào cũng bị CHAN, và dashboard sẽ đỏ 100%. Với 50.000 thẻ, ở 500 giao dịch/giây mỗi thẻ chỉ có khoảng 3 giao dịch mỗi 5 phút, giống hành vi người dùng thật. 20 thẻ demo được giữ riêng cho thao tác tay và kịch bản, nên không bị traffic tự động làm nhiễu.
 
-curl localhost:8080/simulator/stats     # tổng số đã gửi
-curl localhost:8080/simulator/catalog   # danh sách thẻ, merchant, thành phố
-```
+### API (không qua UI)
 
-PowerShell:
 ```powershell
 Invoke-RestMethod -Method Post -Uri http://localhost:8080/simulator/manual-transaction -ContentType "application/json" -Body '{"cardId":"card-0007","amount":25000000,"merchant":"ATM","city":"HA_NOI"}'
+
+# chạy kịch bản; ?wait=true đợi chạy xong rồi trả về báo cáo đầy đủ
+Invoke-RestMethod -Method Post -Uri "http://localhost:8080/simulator/scenario/rapid-fire?wait=true"
+Invoke-RestMethod -Method Post -Uri "http://localhost:8080/simulator/scenario/impossible-travel?wait=true"
+Invoke-RestMethod -Method Post -Uri "http://localhost:8080/simulator/scenario/unusual-amount?wait=true"
 
 Invoke-RestMethod -Method Post -Uri http://localhost:8080/simulator/auto-mode -ContentType "application/json" -Body '{"enabled":true,"ratePerSecond":50}'
 Invoke-RestMethod -Method Post -Uri http://localhost:8080/simulator/auto-mode -ContentType "application/json" -Body '{"enabled":false}'
 
 Invoke-RestMethod http://localhost:8080/simulator/stats
-Invoke-RestMethod http://localhost:8080/simulator/catalog
 ```
 
-Xem message trong topic `transactions` tại Kafka UI → Topics → transactions → Messages.
+WebSocket (STOMP): `ws://localhost:8080/ws/live-feed`, gồm topic `/topic/live-feed` (lô giao dịch mỗi 250 ms) và `/topic/scenario` (tiến trình kịch bản).
 
 ## Chạy feature-service (:8084)
 

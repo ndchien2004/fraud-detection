@@ -1,11 +1,14 @@
 package com.frauddetection.simulator.web;
 
-import com.frauddetection.common.CardProfile;
 import com.frauddetection.common.CardProfiles;
 import com.frauddetection.common.City;
+import com.frauddetection.common.DecisionResult;
+import com.frauddetection.common.HistoricalAverage;
+import com.frauddetection.common.Location;
 import com.frauddetection.common.Merchant;
 import com.frauddetection.common.Transaction;
 import com.frauddetection.simulator.service.AutoModeService;
+import com.frauddetection.simulator.service.SimulatorStats;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -30,26 +33,34 @@ public final class SimulatorDtos {
             Instant timestamp) {
     }
 
-    public record ManualTransactionResponse(Transaction transaction, String topic, int partition, long offset) {
+    public record ManualTransactionResponse(Transaction transaction, DecisionResult result) {
     }
 
     /** @param ratePerSecond optional; keeps the previous rate when omitted */
     public record AutoModeRequest(boolean enabled, @Min(1) @Max(500) Integer ratePerSecond) {
     }
 
-    public record StatsResponse(long totalSent, long totalFailed, AutoModeService.Status autoMode) {
+    public record StatsResponse(SimulatorStats.Snapshot totals, AutoModeService.Status autoMode) {
     }
 
     public record Option(String code, String name) {
     }
 
-    public record CatalogResponse(List<CardProfile> cards, List<Option> merchants, List<Option> cities) {
+    public record CardOption(String cardId, String homeCity, String homeCityName, long typicalAmount,
+                             double historicalAverage) {
+    }
+
+    public record CityOption(String code, String name, Location location) {
+    }
+
+    public record CatalogResponse(List<CardOption> cards, List<Option> merchants, List<CityOption> cities) {
 
         static CatalogResponse create() {
             return new CatalogResponse(
-                    CardProfiles.ALL,
+                    CardProfiles.DEMO.stream().map(c -> new CardOption(c.cardId(), c.homeCity().name(),
+                            c.homeCity().displayName(), c.typicalAmount(), HistoricalAverage.of(c))).toList(),
                     Arrays.stream(Merchant.values()).map(m -> new Option(m.name(), m.displayName())).toList(),
-                    Arrays.stream(City.values()).map(c -> new Option(c.name(), c.displayName())).toList());
+                    Arrays.stream(City.values()).map(c -> new CityOption(c.name(), c.displayName(), c.location())).toList());
         }
     }
 }

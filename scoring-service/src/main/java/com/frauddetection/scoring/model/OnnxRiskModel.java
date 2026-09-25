@@ -29,11 +29,26 @@ public class OnnxRiskModel implements RiskModel, AutoCloseable {
     public OnnxRiskModel(Path modelFile) {
         try {
             this.env = OrtEnvironment.getEnvironment();
-            this.session = env.createSession(modelFile.toString(), new OrtSession.SessionOptions());
+            this.session = env.createSession(modelFile.toString(), sessionOptions());
             this.name = "onnx:" + modelFile.getFileName();
         } catch (OrtException e) {
             throw new IllegalStateException("Cannot load ONNX model " + modelFile, e);
         }
+    }
+
+    /**
+     * One thread per inference, no spin-waiting. By default ONNX Runtime splits every call over
+     * all CPU cores and keeps those threads spinning; for a model this small (well under 1 ms)
+     * that brings nothing, and with dozens of concurrent requests it burned the whole CPU
+     * (scoring capped at ~230 tx/s). Parallelism comes from the web server's request threads instead.
+     */
+    private static OrtSession.SessionOptions sessionOptions() throws OrtException {
+        OrtSession.SessionOptions options = new OrtSession.SessionOptions();
+        options.setIntraOpNumThreads(1);
+        options.setInterOpNumThreads(1);
+        options.addConfigEntry("session.intra_op.allow_spinning", "0");
+        options.addConfigEntry("session.inter_op.allow_spinning", "0");
+        return options;
     }
 
     @Override

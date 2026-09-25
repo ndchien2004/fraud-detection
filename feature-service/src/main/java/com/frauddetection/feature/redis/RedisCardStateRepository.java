@@ -4,6 +4,8 @@ import com.frauddetection.common.CardState;
 import com.frauddetection.common.CardStateRedisCodec;
 import com.frauddetection.feature.stream.CardStateSink;
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,9 +43,15 @@ public class RedisCardStateRepository implements CardStateSink {
         return CardStateRedisCodec.fromHash(redis.opsForHash().entries(CardStateRedisCodec.stateKey(cardId)));
     }
 
-    /** No TTL: the average is refreshed by the (simulated) offline job, not by traffic. */
-    public void saveAverage(String cardId, double average) {
-        redis.opsForValue().set(CardStateRedisCodec.averageKey(cardId), String.valueOf(average));
+    /** One MSET for many cards. No TTL: averages are refreshed by the (simulated) offline job. */
+    public void saveAverages(Map<String, Double> averagesByCardId) {
+        if (averagesByCardId.isEmpty()) {
+            return;
+        }
+        Map<String, String> values = new HashMap<>();
+        averagesByCardId.forEach((cardId, avg) ->
+                values.put(CardStateRedisCodec.averageKey(cardId), String.valueOf(avg)));
+        redis.opsForValue().multiSet(values);
     }
 
     /** 30-day average amount, or 0 when unknown (e.g. a card that is not simulated). */

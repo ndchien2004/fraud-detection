@@ -11,7 +11,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.stereotype.Component;
 
-/** Builds transactions: random "normal" ones for auto mode, or exactly what the user asked for. */
+/** Builds transactions: random ones for auto mode, or exactly what the user / a scenario asked for. */
 @Component
 public class TransactionGenerator {
 
@@ -20,6 +20,7 @@ public class TransactionGenerator {
     /** Spread of the log-normal amount distribution around the card's typical amount. */
     private static final double AMOUNT_SIGMA = 0.4;
     private static final long MIN_AMOUNT = 10_000;
+    private static final City[] FOREIGN_CITIES = {City.SINGAPORE, City.BANGKOK, City.TOKYO};
 
     private final CardClock cardClock;
     private final AtomicLong sequence = new AtomicLong();
@@ -28,20 +29,30 @@ public class TransactionGenerator {
         this.cardClock = cardClock;
     }
 
-    /** A plausible transaction of a random card, in its home city, around its typical amount. */
-    public Transaction random() {
+    /**
+     * Auto-mode transaction of a random background card. Most are ordinary purchases in the card's
+     * home city around its typical amount; {@code anomalyShare} of them are deliberately odd
+     * (half 10-30x the typical amount, half paid in a foreign city) so the dashboard has something to block.
+     */
+    public Transaction random(double anomalyShare) {
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
-        CardProfile card = CardProfiles.ALL.get(rnd.nextInt(CardProfiles.ALL.size()));
-        Merchant[] merchants = Merchant.values();
-        Merchant merchant = merchants[rnd.nextInt(merchants.length)];
+        CardProfile card = CardProfiles.background(1 + rnd.nextInt(CardProfiles.BACKGROUND_COUNT));
+        Merchant merchant = Merchant.values()[rnd.nextInt(Merchant.values().length)];
 
         double factor = Math.exp(rnd.nextGaussian() * AMOUNT_SIGMA);
-        long amount = Math.max(MIN_AMOUNT, Math.round(card.typicalAmount() * factor / 1000.0) * 1000);
+        City city = card.homeCity();
+        double roll = rnd.nextDouble();
+        if (roll < anomalyShare / 2) {
+            factor = rnd.nextDouble(10, 30);
+        } else if (roll < anomalyShare) {
+            city = FOREIGN_CITIES[rnd.nextInt(FOREIGN_CITIES.length)];
+        }
+        long amount = Math.max(MIN_AMOUNT, roundToThousand(card.typicalAmount() * factor));
 
-        Location home = card.homeCity().location();
+        Location center = city.location();
         Location location = new Location(
-                home.lat() + rnd.nextDouble(-LOCATION_JITTER_DEGREES, LOCATION_JITTER_DEGREES),
-                home.lon() + rnd.nextDouble(-LOCATION_JITTER_DEGREES, LOCATION_JITTER_DEGREES));
+                center.lat() + rnd.nextDouble(-LOCATION_JITTER_DEGREES, LOCATION_JITTER_DEGREES),
+                center.lon() + rnd.nextDouble(-LOCATION_JITTER_DEGREES, LOCATION_JITTER_DEGREES));
 
         return build(card.cardId(), amount, merchant, location, null);
     }
@@ -49,6 +60,10 @@ public class TransactionGenerator {
     /** A transaction with exactly the given values, located at the city centre. */
     public Transaction manual(String cardId, long amount, Merchant merchant, City city, Instant timestamp) {
         return build(cardId, amount, merchant, city.location(), timestamp);
+    }
+
+    public static long roundToThousand(double amount) {
+        return Math.round(amount / 1000.0) * 1000;
     }
 
     private Transaction build(String cardId, long amount, Merchant merchant, Location location, Instant timestamp) {

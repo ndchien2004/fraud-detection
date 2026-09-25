@@ -17,14 +17,30 @@ class TransactionGeneratorTest {
     private final TransactionGenerator generator = new TransactionGenerator(new CardClock(Clock.systemUTC()));
 
     @RepeatedTest(50)
-    void randomTransactionIsPlausibleForItsCard() {
-        Transaction tx = generator.random();
+    void autoModeUsesBackgroundCardsWithPlausibleValues() {
+        Transaction tx = generator.random(0);
         CardProfile card = CardProfiles.find(tx.cardId()).orElseThrow();
 
-        assertThat(tx.amount()).isPositive().isLessThan(card.typicalAmount() * 20);
+        assertThat(tx.cardId()).startsWith("bg-");
+        assertThat(tx.amount()).isPositive().isLessThan(card.typicalAmount() * 10);
         assertThat(Merchant.fromCode(tx.merchant())).isPresent();
         assertThat(tx.location().lat()).isCloseTo(card.homeCity().location().lat(), within(0.05));
         assertThat(tx.location().lon()).isCloseTo(card.homeCity().location().lon(), within(0.05));
+    }
+
+    @Test
+    void anomalyShareProducesBigAmountsOrForeignCities() {
+        int anomalies = 0;
+        for (int i = 0; i < 200; i++) {
+            Transaction tx = generator.random(1.0);
+            CardProfile card = CardProfiles.find(tx.cardId()).orElseThrow();
+            boolean bigAmount = tx.amount() >= card.typicalAmount() * 9;
+            boolean abroad = Math.abs(tx.location().lat() - card.homeCity().location().lat()) > 1;
+            if (bigAmount || abroad) {
+                anomalies++;
+            }
+        }
+        assertThat(anomalies).isEqualTo(200);
     }
 
     @Test

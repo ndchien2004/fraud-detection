@@ -2,10 +2,14 @@ package com.frauddetection.simulator.web;
 
 import com.frauddetection.common.CardProfiles;
 import com.frauddetection.common.City;
+import com.frauddetection.common.DecisionResult;
 import com.frauddetection.common.Merchant;
 import com.frauddetection.common.Transaction;
-import com.frauddetection.simulator.kafka.TransactionPublisher;
 import com.frauddetection.simulator.service.AutoModeService;
+import com.frauddetection.simulator.service.ScenarioService;
+import com.frauddetection.simulator.service.ScenarioService.Scenario;
+import com.frauddetection.simulator.service.SimulationService;
+import com.frauddetection.simulator.service.SimulationService.DecisionApiUnavailableException;
 import com.frauddetection.simulator.service.SimulatorStats;
 import com.frauddetection.simulator.service.TransactionGenerator;
 import com.frauddetection.simulator.web.SimulatorDtos.AutoModeRequest;
@@ -14,15 +18,16 @@ import com.frauddetection.simulator.web.SimulatorDtos.ManualTransactionRequest;
 import com.frauddetection.simulator.web.SimulatorDtos.ManualTransactionResponse;
 import com.frauddetection.simulator.web.SimulatorDtos.StatsResponse;
 import jakarta.validation.Valid;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -30,25 +35,22 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/simulator")
 public class SimulatorController {
 
-    private static final long SEND_TIMEOUT_SECONDS = 5;
-
     private final TransactionGenerator generator;
-    private final TransactionPublisher publisher;
+    private final SimulationService simulation;
+    private final ScenarioService scenarios;
     private final AutoModeService autoMode;
     private final SimulatorStats stats;
 
-    public SimulatorController(TransactionGenerator generator, TransactionPublisher publisher,
-                               AutoModeService autoMode, SimulatorStats stats) {
+    public SimulatorController(TransactionGenerator generator, SimulationService simulation,
+                               ScenarioService scenarios, AutoModeService autoMode, SimulatorStats stats) {
         this.generator = generator;
-        this.publisher = publisher;
+        this.simulation = simulation;
+        this.scenarios = scenarios;
         this.autoMode = autoMode;
         this.stats = stats;
     }
 
-    /**
-     * Phase 1: publishes the transaction and returns where Kafka stored it.
-     * Phase 6 will call the Decision API first and return the decision instead.
-     */
+    /** Sends one transaction to decision-api and returns its decision right away. */
     @PostMapping("/manual-transaction")
     public ManualTransactionResponse manualTransaction(@Valid @RequestBody ManualTransactionRequest request) {
         if (CardProfiles.find(request.cardId()).isEmpty()) {
@@ -60,15 +62,24 @@ public class SimulatorController {
                 .orElseThrow(() -> badRequest("Unknown city: " + request.city()));
 
         Transaction tx = generator.manual(request.cardId(), request.amount(), merchant, city, request.timestamp());
-        try {
-            RecordMetadata meta = publisher.publish(tx).get(SEND_TIMEOUT_SECONDS, TimeUnit.SECONDS).getRecordMetadata();
-            return new ManualTransactionResponse(tx, meta.topic(), meta.partition(), meta.offset());
-        } catch (ExecutionException | TimeoutException e) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Kafka is not reachable", e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Interrupted", e);
+        DecisionResult result = simulation.submit(tx);
+        return new ManualTransactionResponse(tx, result);
+    }
+
+    /**
+     * Runs a preset scenario: rapid-fire, impossible-travel or unusual-amount.
+     * By default it runs in the background (progress on WebSocket /topic/scenario) and answers 202;
+     * with {@code ?wait=true} it answers 200 with the full report once finished.
+     */
+    @PostMapping("/scenario/{name}")
+    public ResponseEntity<?> scenario(@PathVariable String name, @RequestParam(defaultValue = "false") boolean wait) {
+        Scenario scenario = Scenario.fromSlug(name)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Unknown scenario: " + name + " (rapid-fire, impossible-travel, unusual-amount)"));
+        if (wait) {
+            return ResponseEntity.ok(scenarios.runAndWait(scenario));
         }
+        return ResponseEntity.accepted().body(scenarios.start(scenario));
     }
 
     @PostMapping("/auto-mode")
@@ -83,13 +94,20 @@ public class SimulatorController {
 
     @GetMapping("/stats")
     public StatsResponse stats() {
-        return new StatsResponse(stats.sent(), stats.failed(), autoMode.status());
+        return new StatsResponse(stats.snapshot(), autoMode.status());
     }
 
-    /** Values for the UI dropdowns (cards, merchants, cities). */
+    /** Values for the UI dropdowns (demo cards, merchants, cities). */
     @GetMapping("/catalog")
     public CatalogResponse catalog() {
         return CatalogResponse.create();
+    }
+
+    @ExceptionHandler(DecisionApiUnavailableException.class)
+    ResponseEntity<ProblemDetail> decisionApiDown(DecisionApiUnavailableException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE,
+                        "decision-api is not reachable. Is it running on port 8082?"));
     }
 
     private static ResponseStatusException badRequest(String message) {

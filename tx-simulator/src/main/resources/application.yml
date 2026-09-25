@@ -7,22 +7,23 @@ spring:
   mvc:
     problemdetails:
       enabled: true   # validation errors are returned as RFC 7807 JSON
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-      properties:
-        # plain JSON without Java class-name headers, so any consumer (or language) can read it
-        spring.json.add.type.headers: false
-        # batch messages for up to 5 ms -> much higher throughput in auto mode
-        linger.ms: 5
-        # fail fast instead of blocking 60 s when Kafka is down
-        max.block.ms: 5000
 
 app:
-  topics:
-    transactions: transactions
+  decision-api:
+    url: ${DECISION_API_URL:http://localhost:8082}
+    connect-timeout-ms: 1000
+    read-timeout-ms: 3000
+  auto-mode:
+    # parallel calls to decision-api: one thread alone tops out around 100-150 tx/s
+    threads: 32
+    # share of auto-mode transactions that are deliberately anomalous (big amount, foreign city)
+    anomaly-share: 0.02
+  scenario:
+    # pause between scenario transactions: gives the feature service time to update Redis
+    step-delay-ms: 1000
+  live-feed:
+    # events are pushed to browsers in batches, so 500 tx/s do not mean 500 WebSocket frames/s
+    flush-interval-ms: 250
 
 management:
   endpoints:

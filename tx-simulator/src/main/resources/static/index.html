@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fraud Simulator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div>
+    <h1>Fraud Simulator</h1>
+    <p class="subtitle">Bắn giao dịch, dựng kịch bản gian lận và xem hệ thống phản ứng theo thời gian thực</p>
+  </div>
+  <div id="ws-status" class="ws-status" data-state="connecting">
+    <span class="dot"></span><span class="label">Đang kết nối...</span>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- 3.1 Auto mode -->
+  <section class="card" id="auto-mode">
+    <h2>Chế độ tự động</h2>
+    <p class="hint">Sinh giao dịch ngẫu nhiên liên tục trên 50.000 thẻ nền (~2% cố tình bất thường).</p>
+    <div class="auto-controls">
+      <label class="switch">
+        <input type="checkbox" id="auto-enabled">
+        <span class="slider-track"></span>
+        <span class="switch-label" id="auto-label">Tắt</span>
+      </label>
+      <div class="rate">
+        <input type="range" id="auto-rate" min="1" max="500" value="10">
+        <output id="auto-rate-value">10</output><span class="unit">giao dịch/giây</span>
+      </div>
+    </div>
+    <div class="counters">
+      <div class="counter"><span class="num" id="stat-total">0</span><span class="cap">Đã gửi</span></div>
+      <div class="counter ok"><span class="num" id="stat-ok">0</span><span class="cap">CHO_QUA</span></div>
+      <div class="counter review"><span class="num" id="stat-review">0</span><span class="cap">XEM_XET</span></div>
+      <div class="counter block"><span class="num" id="stat-block">0</span><span class="cap">CHAN</span></div>
+    </div>
+    <p class="hint small" id="stat-extra"></p>
+  </section>
+
+  <!-- 3.2 Manual transaction -->
+  <section class="card" id="manual">
+    <h2>Gửi giao dịch thủ công</h2>
+    <form id="manual-form" class="form">
+      <label>Thẻ <select id="m-card" required></select></label>
+      <label>Số tiền (VND) <input type="number" id="m-amount" min="1" step="1000" required></label>
+      <label>Merchant <select id="m-merchant" required></select></label>
+      <label>Địa điểm <select id="m-city" required></select></label>
+      <button type="submit" id="m-submit" class="primary">Gửi giao dịch</button>
+    </form>
+    <div id="manual-result" class="result" hidden></div>
+  </section>
+
+  <!-- 3.3 Preset scenarios -->
+  <section class="card wide" id="scenarios">
+    <h2>Kịch bản gian lận dựng sẵn</h2>
+    <div class="scenario-buttons">
+      <button data-scenario="rapid-fire">
+        <strong>Quẹt dồn dập</strong><span>10 giao dịch / 10 giây, cùng 1 thẻ</span>
+      </button>
+      <button data-scenario="impossible-travel">
+        <strong>Impossible travel</strong><span>Hà Nội, 2 phút sau ở TP.HCM</span>
+      </button>
+      <button data-scenario="unusual-amount">
+        <strong>Chi tiêu bất thường</strong><span>Gấp 20 lần trung bình lịch sử</span>
+      </button>
+    </div>
+    <div id="scenario-panel" class="scenario-panel" hidden>
+      <div class="scenario-head">
+        <div><span id="sc-title" class="sc-title"></span> · thẻ <code id="sc-card"></code></div>
+        <div class="hint">Kỳ vọng: <span id="sc-expect"></span></div>
+      </div>
+      <div class="progress"><div class="bar" id="sc-bar"></div></div>
+      <ol id="sc-log" class="sc-log"></ol>
+      <table class="table compact">
+        <thead><tr><th>#</th><th>Thời gian</th><th>Địa điểm</th><th class="num">Số tiền</th><th>Quyết định</th><th class="num">Điểm</th><th>Rule</th><th class="num">5 phút</th></tr></thead>
+        <tbody id="sc-rows"></tbody>
+      </table>
+      <div id="sc-summary" class="summary" hidden></div>
+    </div>
+  </section>
+
+  <!-- 3.4 Live feed -->
+  <section class="card wide" id="live-feed">
+    <div class="feed-head">
+      <h2>Nhật ký thời gian thực</h2>
+      <div class="feed-tools">
+        <label class="check"><input type="checkbox" id="feed-hide-ok"> Ẩn CHO_QUA</label>
+        <button id="feed-pause" class="ghost">Tạm dừng</button>
+        <button id="feed-clear" class="ghost">Xoá</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Thời gian</th><th>Mã GD</th><th>Thẻ</th><th class="num">Số tiền</th><th>Merchant</th><th>Quyết định</th><th class="num">Điểm</th><th>Rule</th><th class="num">ms</th></tr></thead>
+        <tbody id="feed-rows"></tbody>
+      </table>
+      <p class="empty" id="feed-empty">Chưa có giao dịch. Gửi thủ công, chạy một kịch bản hoặc bật chế độ tự động.</p>
+    </div>
+  </section>
+</main>
+
+<script src="vendor/stomp.umd.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
