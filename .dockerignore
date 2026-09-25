@@ -1,0 +1,11 @@
+# Only sources and poms are needed to build the images
+**/target/
+.git/
+.idea/
+.vscode/
+.claude/
+*.iml
+model-training/
+config/
+docs/
+*.md

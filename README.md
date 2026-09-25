@@ -20,18 +20,53 @@ Java 21 · Spring Boot 3.5 · Apache Kafka (KRaft) + Kafka Streams · Redis · O
 - [x] Phase 5: Train model (Kaggle) + tích hợp ONNX
 - [x] Phase 6: Simulator UI
 - [x] Phase 7: Dashboard
-- [ ] Phase 8: Docker hoá toàn bộ
+- [x] Phase 8: Docker hoá toàn bộ
 - [ ] Phase 9: Load test Gatling
 - [ ] Phase 10: README hoàn chỉnh
 
-## Chạy hạ tầng (hiện tại)
+## Chạy toàn bộ hệ thống bằng Docker (một lệnh)
 
-Yêu cầu: Docker Desktop, JDK 21+.
+Yêu cầu: Docker Desktop. Không cần cài Java hay Maven.
 
-```bash
-docker compose up -d        # Kafka :9092, Redis :6380, Kafka UI :8090
-./mvnw verify               # build + test (Windows: mvnw.cmd verify)
+```powershell
+docker compose up -d --build --wait
 ```
+
+- Lần đầu mất khoảng 7 phút để build image (tải Maven và các thư viện). Các lần sau chỉ mất vài chục giây nhờ bộ nhớ đệm.
+- Từ trạng thái sạch, cả 8 container thường healthy sau khoảng 45 giây.
+- `--wait` chỉ trả lời khi mọi container đã **healthy**.
+
+| Trang | Địa chỉ |
+|---|---|
+| Simulator UI | http://localhost:8080 |
+| Dashboard | http://localhost:8081 |
+| Kafka UI | http://localhost:8090 |
+| Decision API | `POST http://localhost:8082/check-transaction` |
+
+```powershell
+docker compose ps                         # trạng thái + health của từng container
+docker compose logs -f scoring-service    # xem log một service
+docker compose down                       # tắt (giữ volume)
+docker compose down -v                    # tắt và xoá sạch dữ liệu
+```
+
+Cách đóng gói:
+
+- **Một Dockerfile nhiều giai đoạn** ([Dockerfile](Dockerfile)): giai đoạn `build` compile cả project **một lần**, sau đó mỗi service chỉ chép jar của mình sang image JRE (Ubuntu, không dùng Alpine vì ONNX Runtime cần glibc). Service chạy bằng user thường, không phải root.
+- **Healthcheck + `depends_on: service_healthy`**: service chỉ khởi động khi các service nó cần đã sẵn sàng. Thứ tự: Kafka, Redis → feature-service, scoring-service → decision-api → tx-simulator. feature-service chỉ báo healthy khi Kafka Streams đã `RUNNING` **và** đã nạp xong trung bình lịch sử.
+- **`config/` và `model.onnx` được mount, không đóng gói vào image**: sửa `config/rules.yaml` trên máy thì container đọc lại trong vòng 5 giây. Train lại model thì chỉ cần `docker compose restart scoring-service`.
+- Trong mạng Docker, các service gọi nhau bằng tên: `kafka:29092`, `redis:6379`, `http://scoring-service:8083`...
+
+## Chế độ phát triển (chạy service bằng mvnw)
+
+Khi đang sửa code, chỉ chạy hạ tầng bằng Docker, còn các service thì chạy bằng `mvnw` để khởi động lại nhanh. Yêu cầu: JDK 21+.
+
+```powershell
+docker compose up -d kafka redis kafka-ui     # chỉ hạ tầng
+.\mvnw.cmd verify                             # build + toàn bộ test
+```
+
+Nếu các container service đang chạy, hãy tắt chúng trước (`docker compose stop tx-simulator dashboard decision-api scoring-service feature-service`), nếu không sẽ bị trùng cổng 8080–8084.
 
 | Thành phần | Địa chỉ |
 |---|---|
@@ -60,10 +95,12 @@ Mọi giao dịch của simulator đều đi qua `POST /check-transaction` của
 |---|---|
 | Chế độ tự động | 1–500 giao dịch/giây trên **50.000 thẻ nền** (`bg-00001`…`bg-50000`), trong đó ~2% cố tình bất thường (số tiền gấp 10–30 lần, hoặc thanh toán ở nước ngoài) |
 | Gửi thủ công | 20 thẻ demo `card-0001`…`card-0020`, trả về quyết định + 5 chỉ số + latency |
-| Kịch bản | Quẹt dồn dập (10 giao dịch/10 giây → từ giao dịch 6 bị CHAN), Impossible travel (Hà Nội → TP.HCM sau 2 phút → giao dịch 2 bị CHAN), Chi tiêu bất thường (gấp 20 lần trung bình → XEM_XET/CHAN) |
+| Kịch bản | Quẹt dồn dập (10 giao dịch/10 giây → từ giao dịch 6 bị CHAN), Impossible travel (thanh toán ở thành phố nhà, 2 phút sau ở thành phố cách hơn 600 km, ví dụ Hà Nội → TP.HCM → giao dịch 2 bị CHAN), Chi tiêu bất thường (gấp 20 lần trung bình → XEM_XET/CHAN). Mỗi lần chạy dùng một **thẻ kịch bản** mới (`sc-0001`…`sc-0500`) không có giao dịch nào trong 2 giờ qua, nên kết quả luôn đúng như kỳ vọng dù chạy lại bao nhiêu lần |
 | Nhật ký thời gian thực | 100 giao dịch mới nhất, tô màu theo quyết định; có nút tạm dừng và lọc bỏ CHO_QUA |
 
-**Vì sao Auto Mode không dùng 20 thẻ như đề bài?** Rule `so_giao_dich_5_phut > 5` chỉ cho mỗi thẻ khoảng 1 giao dịch/phút. Với 20 thẻ, chỉ cần khoảng 0,3 giao dịch/giây là thẻ nào cũng bị CHAN, và dashboard sẽ đỏ 100%. Với 50.000 thẻ, ở 500 giao dịch/giây mỗi thẻ chỉ có khoảng 3 giao dịch mỗi 5 phút, giống hành vi người dùng thật. 20 thẻ demo được giữ riêng cho thao tác tay và kịch bản, nên không bị traffic tự động làm nhiễu.
+**Vì sao Auto Mode không dùng 20 thẻ như đề bài?** Rule `so_giao_dich_5_phut > 5` chỉ cho mỗi thẻ khoảng 1 giao dịch/phút. Với 20 thẻ, chỉ cần khoảng 0,3 giao dịch/giây là thẻ nào cũng bị CHAN, và dashboard sẽ đỏ 100%. Với 50.000 thẻ, ở 500 giao dịch/giây mỗi thẻ chỉ có khoảng 3 giao dịch mỗi 5 phút, giống hành vi người dùng thật. 20 thẻ demo được giữ riêng cho thao tác tay, nên không bị traffic tự động làm nhiễu.
+
+**Vì sao kịch bản có nhóm thẻ riêng?** Mỗi lần chạy kịch bản để lại "dấu vết" trên thẻ đó trong 1 giờ (10 giao dịch, một chuyến bay xuyên Việt, một khoản chi khổng lồ). Chạy lại trên cùng thẻ thì giao dịch đầu tiên đã bị CHAN vì những dấu vết cũ. Trước mỗi lần chạy, simulator hỏi feature-service (`GET /features/{cardId}`) để chọn thẻ sạch.
 
 ### API (không qua UI)
 

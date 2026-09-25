@@ -16,11 +16,15 @@ import java.util.regex.Pattern;
  *   <li>background cards bg-00001 .. bg-50000, for auto mode traffic: with the rule "more than 5
  *       transactions in 5 minutes", 20 cards could only carry ~0.3 tx/s before every card is
  *       blocked; 50,000 cards carry 500 tx/s at ~3 transactions per card per 5 minutes</li>
+ *   <li>scenario cards sc-0001 .. sc-0500, one fresh card per preset scenario run: a scenario
+ *       leaves an hour of "history" behind (10 payments, a trip across the country, a huge
+ *       amount) that would spoil the next run on the same card</li>
  * </ul>
  */
 public final class CardProfiles {
 
     public static final int BACKGROUND_COUNT = 50_000;
+    public static final int SCENARIO_COUNT = 500;
 
     private static final City[] HOME_CITIES = {
             City.HA_NOI, City.HO_CHI_MINH, City.DA_NANG, City.HAI_PHONG, City.CAN_THO
@@ -34,6 +38,7 @@ public final class CardProfiles {
     };
 
     private static final Pattern BACKGROUND_ID = Pattern.compile("bg-(\\d{5})");
+    private static final Pattern SCENARIO_ID = Pattern.compile("sc-(\\d{4})");
 
     public static final List<CardProfile> DEMO = buildDemo();
 
@@ -57,20 +62,37 @@ public final class CardProfiles {
         if (n < 1 || n > BACKGROUND_COUNT) {
             throw new IllegalArgumentException("Background card number out of range: " + n);
         }
-        double u = new Random(n).nextDouble();
-        long typical = Math.round(Math.exp(Math.log(100_000) + u * (Math.log(3_000_000) - Math.log(100_000))) / 1000) * 1000;
-        return new CardProfile("bg-%05d".formatted(n), HOME_CITIES[n % HOME_CITIES.length], typical);
+        return new CardProfile("bg-%05d".formatted(n), HOME_CITIES[n % HOME_CITIES.length], typicalAmount(n));
     }
 
-    /** Finds a demo or background card. */
+    /** Scenario card number {@code n} (1 .. {@link #SCENARIO_COUNT}), same construction as background cards. */
+    public static CardProfile scenario(int n) {
+        if (n < 1 || n > SCENARIO_COUNT) {
+            throw new IllegalArgumentException("Scenario card number out of range: " + n);
+        }
+        return new CardProfile("sc-%04d".formatted(n), HOME_CITIES[n % HOME_CITIES.length],
+                typicalAmount(1_000_000 + n));
+    }
+
+    private static long typicalAmount(long seed) {
+        double u = new Random(seed).nextDouble();
+        return Math.round(Math.exp(Math.log(100_000) + u * (Math.log(3_000_000) - Math.log(100_000))) / 1000) * 1000;
+    }
+
+    /** Finds a demo, background or scenario card. */
     public static Optional<CardProfile> find(String cardId) {
         if (cardId == null) {
             return Optional.empty();
         }
-        Matcher m = BACKGROUND_ID.matcher(cardId);
-        if (m.matches()) {
-            int n = Integer.parseInt(m.group(1));
+        Matcher bg = BACKGROUND_ID.matcher(cardId);
+        if (bg.matches()) {
+            int n = Integer.parseInt(bg.group(1));
             return n >= 1 && n <= BACKGROUND_COUNT ? Optional.of(background(n)) : Optional.empty();
+        }
+        Matcher sc = SCENARIO_ID.matcher(cardId);
+        if (sc.matches()) {
+            int n = Integer.parseInt(sc.group(1));
+            return n >= 1 && n <= SCENARIO_COUNT ? Optional.of(scenario(n)) : Optional.empty();
         }
         return DEMO.stream().filter(c -> c.cardId().equals(cardId)).findFirst();
     }

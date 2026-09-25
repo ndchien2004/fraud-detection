@@ -13,6 +13,9 @@ app:
     url: ${DECISION_API_URL:http://localhost:8082}
     connect-timeout-ms: 1000
     read-timeout-ms: 3000
+  feature-service:
+    # asked before a scenario, to pick a demo card whose recent history cannot spoil it
+    url: ${FEATURE_SERVICE_URL:http://localhost:8084}
   auto-mode:
     # parallel calls to decision-api: one thread alone tops out around 100-150 tx/s
     threads: 32
@@ -30,3 +33,7 @@ management:
     web:
       exposure:
         include: health,info
+  endpoint:
+    health:
+      # show why a service is (not) healthy, e.g. Redis or Kafka Streams state
+      show-details: always

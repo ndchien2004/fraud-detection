@@ -5,11 +5,16 @@ import com.frauddetection.common.CardProfiles;
 import com.frauddetection.common.City;
 import com.frauddetection.common.Decision;
 import com.frauddetection.common.DecisionResult;
+import com.frauddetection.common.FeatureCalculator;
 import com.frauddetection.common.HistoricalAverage;
 import com.frauddetection.common.Merchant;
 import com.frauddetection.common.Transaction;
+import com.frauddetection.simulator.feature.FeatureServiceClient;
+import com.frauddetection.simulator.feature.FeatureServiceClient.CardActivity;
 import com.frauddetection.simulator.service.SimulationService.DecisionApiUnavailableException;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -18,13 +23,16 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
 /**
- * The 3 preset fraud scenarios. Each run sends a short series of transactions on one demo card,
+ * The 3 preset fraud scenarios. Each run sends a short series of transactions on one fresh card,
  * one step at a time, and reports every step on the STOMP topic {@value #TOPIC} so the UI can show
  * exactly at which transaction the system starts to react.
  */
@@ -78,21 +86,36 @@ public class ScenarioService {
     private record Plan(Run run, List<Step> steps) {
     }
 
+    private static final Logger log = LoggerFactory.getLogger(ScenarioService.class);
     private static final int RAPID_FIRE_COUNT = 10;
     private static final Duration TRAVEL_GAP = Duration.ofMinutes(2);
+    /**
+     * A card unused for this long has an empty 5-minute and 1-hour window, and any trip is
+     * possible by plane: its history can no longer influence a scenario.
+     */
+    private static final Duration FORGOTTEN_AFTER = Duration.ofHours(2);
+    private static final int MAX_CARDS_TRIED = 50;
 
     private final TransactionGenerator generator;
     private final SimulationService simulation;
     private final CardClock cardClock;
+    private final FeatureServiceClient featureService;
+    private final Clock clock;
     private final SimpMessagingTemplate messaging;
     private final long stepDelayMs;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+    /** Random start, so a restarted simulator does not retry the cards it just used. */
+    private final AtomicInteger nextScenarioCard =
+            new AtomicInteger(ThreadLocalRandom.current().nextInt(CardProfiles.SCENARIO_COUNT));
 
     public ScenarioService(TransactionGenerator generator, SimulationService simulation, CardClock cardClock,
-                           SimpMessagingTemplate messaging, @Value("${app.scenario.step-delay-ms}") long stepDelayMs) {
+                           FeatureServiceClient featureService, Clock clock, SimpMessagingTemplate messaging,
+                           @Value("${app.scenario.step-delay-ms}") long stepDelayMs) {
         this.generator = generator;
         this.simulation = simulation;
         this.cardClock = cardClock;
+        this.featureService = featureService;
+        this.clock = clock;
         this.messaging = messaging;
         this.stepDelayMs = stepDelayMs;
     }
@@ -110,13 +133,60 @@ public class ScenarioService {
     }
 
     private Plan plan(Scenario scenario) {
-        List<String> demoIds = CardProfiles.DEMO.stream().map(CardProfile::cardId).toList();
+        CardProfile card = pickCleanCard();
         return switch (scenario) {
-            case RAPID_FIRE -> rapidFire(card(cardClock.leastRecentlyUsed(demoIds)));
-            case IMPOSSIBLE_TRAVEL -> impossibleTravel(card(cardClock.leastRecentlyUsed(CardProfiles.DEMO.stream()
-                    .filter(c -> c.homeCity() == City.HA_NOI).map(CardProfile::cardId).toList())));
-            case UNUSUAL_AMOUNT -> unusualAmount(card(cardClock.leastRecentlyUsed(demoIds)));
+            case RAPID_FIRE -> rapidFire(card);
+            case IMPOSSIBLE_TRAVEL -> impossibleTravel(card);
+            case UNUSUAL_AMOUNT -> unusualAmount(card);
         };
+    }
+
+    /**
+     * A scenario card (sc-0001 .. sc-0500) with no transaction in the last 2 hours, according to
+     * feature-service (which survives simulator restarts). Cards are tried in round-robin order;
+     * if none of the next {@value #MAX_CARDS_TRIED} is clean, the one used longest ago is taken.
+     * The card's virtual clock is moved past its last known transaction, so timestamps never go backwards.
+     */
+    CardProfile pickCleanCard() {
+        Instant now = clock.instant();
+        CardProfile oldest = null;
+        Instant oldestLast = null;
+        for (int i = 0; i < MAX_CARDS_TRIED; i++) {
+            CardProfile card = CardProfiles.scenario(1 + Math.floorMod(nextScenarioCard.getAndIncrement(),
+                    CardProfiles.SCENARIO_COUNT));
+            Optional<CardActivity> activity = lastActivity(card.cardId());
+            activity.ifPresent(a -> cardClock.observe(card.cardId(), a.lastTimestamp()));
+            if (isClean(activity, now)) {
+                return card;
+            }
+            Instant last = cardClock.last(card.cardId());
+            if (oldest == null || (last != null && last.isBefore(oldestLast))) {
+                oldest = card;
+                oldestLast = last;
+            }
+        }
+        log.warn("No scenario card without recent activity found, using {}", oldest.cardId());
+        return oldest;
+    }
+
+    private Optional<CardActivity> lastActivity(String cardId) {
+        try {
+            return featureService.lastActivity(cardId);
+        } catch (RuntimeException e) {
+            // feature-service down: fall back to what this simulator remembers
+            log.debug("Cannot read activity of {}: {}", cardId, e.getMessage());
+            Instant last = cardClock.last(cardId);
+            return last == null ? Optional.empty() : Optional.of(new CardActivity(last, null));
+        }
+    }
+
+    /** No activity at all, or the last one is over 2 hours old (and not stamped in the future). */
+    static boolean isClean(Optional<CardActivity> activity, Instant now) {
+        if (activity.isEmpty()) {
+            return true;
+        }
+        Duration age = Duration.between(activity.get().lastTimestamp(), now);
+        return !age.isNegative() && age.compareTo(FORGOTTEN_AFTER) > 0;
     }
 
     /** 10 ordinary purchases on the same card, one per second. */
@@ -132,13 +202,19 @@ public class ScenarioService {
         return new Plan(run(Scenario.RAPID_FIRE, card, steps.size()), steps);
     }
 
-    /** Hà Nội, then TP.HCM (~1,140 km) stamped 2 minutes later. */
+    /**
+     * A payment in the card's home city, then one in a far city stamped 2 minutes later:
+     * TP.HCM for cards living in the north or centre, Hà Nội for cards living in the south.
+     */
     private Plan impossibleTravel(CardProfile card) {
+        City home = card.homeCity();
+        City far = home == City.HO_CHI_MINH || home == City.CAN_THO ? City.HA_NOI : City.HO_CHI_MINH;
+        long km = Math.round(FeatureCalculator.haversineKm(home.location(), far.location()));
         List<Step> steps = List.of(
-                new Step("Thanh toán tại Hà Nội", done ->
-                        generator.manual(card.cardId(), card.typicalAmount(), Merchant.GRAB, City.HA_NOI, null)),
-                new Step("2 phút sau, thanh toán tại TP.HCM (cách ~1.140 km)", done ->
-                        generator.manual(card.cardId(), card.typicalAmount(), Merchant.GRAB, City.HO_CHI_MINH,
+                new Step("Thanh toán tại " + home.displayName(), done ->
+                        generator.manual(card.cardId(), card.typicalAmount(), Merchant.GRAB, home, null)),
+                new Step("2 phút sau, thanh toán tại %s (cách ~%,d km)".formatted(far.displayName(), km), done ->
+                        generator.manual(card.cardId(), card.typicalAmount(), Merchant.GRAB, far,
                                 done.get(0).transaction().timestamp().plus(TRAVEL_GAP))));
         return new Plan(run(Scenario.IMPOSSIBLE_TRAVEL, card, steps.size()), steps);
     }
@@ -198,10 +274,6 @@ public class ScenarioService {
     private static Run run(Scenario scenario, CardProfile card, int totalSteps) {
         return new Run(UUID.randomUUID().toString(), scenario.slug, scenario.title, scenario.expectation,
                 card.cardId(), totalSteps);
-    }
-
-    private static CardProfile card(String cardId) {
-        return CardProfiles.find(cardId).orElseThrow();
     }
 
     private boolean pause() {

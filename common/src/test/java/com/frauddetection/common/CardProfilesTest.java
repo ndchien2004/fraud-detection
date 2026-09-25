@@ -19,6 +19,8 @@ class CardProfilesTest {
         assertThat(CardProfiles.find("bg-00042")).contains(CardProfiles.background(42));
         assertThat(CardProfiles.find("bg-50000")).isPresent();
         assertThat(CardProfiles.find("bg-50001")).isEmpty();
+        assertThat(CardProfiles.find("sc-0042")).contains(CardProfiles.scenario(42));
+        assertThat(CardProfiles.find("sc-0501")).isEmpty();
         assertThat(CardProfiles.find("card-9999")).isEmpty();
         assertThat(CardProfiles.find(null)).isEmpty();
     }

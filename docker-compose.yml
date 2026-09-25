@@ -1,6 +1,27 @@
-# Phase 0: infrastructure only (Kafka + Redis + Kafka UI).
-# The Java services are added to this file in Phase 8.
+# The whole system with one command:   docker compose up -d --build
+#   Simulator UI  http://localhost:8080      Dashboard  http://localhost:8081
+#   Kafka UI      http://localhost:8090
+#
+# Development mode (run the Java services yourself with mvnw): start only the infrastructure
+#   docker compose up -d kafka redis kafka-ui
 name: fraud-detection
+
+# settings shared by the 5 Java services
+x-java-service: &java-service
+  build:
+    context: .
+  restart: unless-stopped
+  environment: &java-env
+    KAFKA_BOOTSTRAP_SERVERS: kafka:29092   # the INTERNAL listener, reachable between containers
+    REDIS_HOST: redis
+    REDIS_PORT: 6379                       # inside the network Redis listens on its normal port
+
+# "healthy" = GET /actuator/health answers {"status":"UP"} (curl -f fails on 503 OUT_OF_SERVICE/DOWN)
+x-healthcheck: &healthcheck
+  interval: 5s
+  timeout: 3s
+  retries: 30
+  start_period: 20s
 
 services:
   kafka:
@@ -53,3 +74,111 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+
+  feature-service:
+    <<: *java-service
+    build:
+      context: .
+      target: feature-service
+    container_name: feature-service
+    ports:
+      - "8084:8084"
+    environment:
+      <<: *java-env
+      KAFKA_STREAMS_STATE_DIR: /data/kafka-streams
+    volumes:
+      - feature-state:/data   # RocksDB state survives container restarts
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "curl", "-fs", "http://localhost:8084/actuator/health"]
+
+  scoring-service:
+    <<: *java-service
+    build:
+      context: .
+      target: scoring-service
+    container_name: scoring-service
+    ports:
+      - "8083:8083"
+    environment:
+      <<: *java-env
+      RULES_FILE: /config/rules.yaml
+      MODEL_FILE: /models/model.onnx
+    volumes:
+      # mounted, not copied into the image: edit config/rules.yaml on your machine and it is
+      # reloaded within 5 s; retrain the model and just restart the container
+      - ./config:/config:ro
+      - ./model-training/model.onnx:/models/model.onnx:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "curl", "-fs", "http://localhost:8083/actuator/health"]
+
+  decision-api:
+    <<: *java-service
+    build:
+      context: .
+      target: decision-api
+    container_name: decision-api
+    ports:
+      - "8082:8082"
+    environment:
+      <<: *java-env
+      SCORING_URL: http://scoring-service:8083
+    depends_on:
+      kafka:
+        condition: service_healthy
+      scoring-service:
+        condition: service_healthy
+      # transactions sent before the feature service is ready would still be counted later,
+      # but waiting keeps the very first demo clean
+      feature-service:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "curl", "-fs", "http://localhost:8082/actuator/health"]
+
+  tx-simulator:
+    <<: *java-service
+    build:
+      context: .
+      target: tx-simulator
+    container_name: tx-simulator
+    ports:
+      - "8080:8080"
+    environment:
+      DECISION_API_URL: http://decision-api:8082
+      FEATURE_SERVICE_URL: http://feature-service:8084
+    depends_on:
+      decision-api:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/actuator/health"]
+
+  dashboard:
+    <<: *java-service
+    build:
+      context: .
+      target: dashboard
+    container_name: dashboard
+    ports:
+      - "8081:8081"
+    environment:
+      <<: *java-env
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "curl", "-fs", "http://localhost:8081/actuator/health"]
+
+volumes:
+  feature-state:

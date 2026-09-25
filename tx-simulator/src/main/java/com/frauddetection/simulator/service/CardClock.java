@@ -3,8 +3,6 @@ package com.frauddetection.simulator.service;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Comparator;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
@@ -32,12 +30,15 @@ public class CardClock {
     }
 
     /**
-     * The card whose last transaction is the oldest (never-used cards first). Scenarios run on it,
-     * so leftovers of a previous run (e.g. transactions still inside the 5-minute window) are unlikely.
+     * Records a timestamp learnt from elsewhere (e.g. feature-service after a simulator restart),
+     * so the next transaction of this card is stamped after it.
      */
-    public String leastRecentlyUsed(List<String> cardIds) {
-        return cardIds.stream()
-                .min(Comparator.comparing((String id) -> lastTimestamps.getOrDefault(id, Instant.MIN)))
-                .orElseThrow();
+    public void observe(String cardId, Instant timestamp) {
+        lastTimestamps.merge(cardId, timestamp, (a, b) -> a.isAfter(b) ? a : b);
+    }
+
+    /** Last timestamp given to this card, or null if this simulator never used it. */
+    public Instant last(String cardId) {
+        return lastTimestamps.get(cardId);
     }
 }
