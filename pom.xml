@@ -28,6 +28,8 @@
     <properties>
         <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- keep in sync with onnxruntime in model-training/requirements.txt -->
+        <onnxruntime.version>1.30.0</onnxruntime.version>
     </properties>
 
     <dependencyManagement>
@@ -36,6 +38,11 @@
                 <groupId>com.frauddetection</groupId>
                 <artifactId>common</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.microsoft.onnxruntime</groupId>
+                <artifactId>onnxruntime</artifactId>
+                <version>${onnxruntime.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

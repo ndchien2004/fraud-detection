@@ -2,7 +2,6 @@ package com.frauddetection.scoring.model;
 
 import com.frauddetection.common.Features;
 import com.frauddetection.common.Transaction;
-import org.springframework.stereotype.Component;
 
 /**
  * Hand-written stand-in for the ML model: a weighted sum of normalised features.
@@ -12,8 +11,8 @@ import org.springframework.stereotype.Component;
  *   <li>hourly spend: 20x the average or more counts fully (weight 0.15)</li>
  * </ul>
  * So an amount 20x the average scores about 0.75 (XEM_XET) and a normal purchase about 0.
+ * Used when no trained model file is available.
  */
-@Component
 public class WeightedScoreModel implements RiskModel {
 
     static final double DEVIATION_WEIGHT = 0.6;

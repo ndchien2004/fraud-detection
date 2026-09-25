@@ -18,6 +18,9 @@ app:
     file: ${RULES_FILE:../config/rules.yaml}
     # how often the file's modification time is checked
     reload-interval-ms: 5000
+  model:
+    # produced by model-training/train.py; if missing, a hand-written weighted score is used
+    file: ${MODEL_FILE:../model-training/model.onnx}
 
 management:
   endpoints:

@@ -17,7 +17,7 @@ Java 21 · Spring Boot 3.5 · Apache Kafka (KRaft) + Kafka Streams · Redis · O
 - [x] Phase 2: `feature-service` (Kafka Streams, 2/5 chỉ số)
 - [x] Phase 3: Đủ 5/5 chỉ số
 - [x] Phase 4: `scoring-service` (rules.yaml) + `decision-api`
-- [ ] Phase 5: Train model (Kaggle) + tích hợp ONNX
+- [x] Phase 5: Train model (Kaggle) + tích hợp ONNX
 - [ ] Phase 6: Simulator UI
 - [ ] Phase 7: Dashboard
 - [ ] Phase 8: Docker hoá toàn bộ
@@ -138,3 +138,9 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8083/admin/reload-rules   #
 ### rules.yaml
 
 [config/rules.yaml](config/rules.yaml) được đọc lại tự động trong vòng 5 giây sau khi lưu, không cần build hay restart. Rule được áp từ trên xuống, rule đầu tiên khớp sẽ quyết định. Nếu file bị sửa sai (lỗi YAML, sai tên biến), scoring-service ghi log lỗi và **giữ nguyên rules cũ**.
+
+## Model ML (ONNX)
+
+Nếu không rule nào khớp, scoring-service chấm điểm bằng model trong [model-training/model.onnx](model-training/model.onnx). Model là Gradient Boosting được train bằng Python rồi chạy trong Java qua ONNX Runtime, mỗi lần chấm dưới 1ms. Điểm lớn hơn `xem_xet_neu_diem_tren` thì ra XEM_XET, lớn hơn `chan_neu_diem_tren` thì ra CHAN.
+
+Cách train lại và lý do phải sinh dữ liệu theo 5 chỉ số thay vì dùng thẳng Kaggle: xem [model-training/README.md](model-training/README.md). Kết quả đánh giá: [model-training/metrics.md](model-training/metrics.md).
