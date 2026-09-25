@@ -9,6 +9,10 @@ import static io.gatling.javaapi.core.CoreDsl.scenario;
 import static io.gatling.javaapi.http.HttpDsl.http;
 import static io.gatling.javaapi.http.HttpDsl.status;
 
+import com.frauddetection.common.CardProfile;
+import com.frauddetection.common.CardProfiles;
+import com.frauddetection.common.Location;
+import com.frauddetection.common.Merchant;
 import io.gatling.javaapi.core.ScenarioBuilder;
 import io.gatling.javaapi.core.Simulation;
 import io.gatling.javaapi.http.HttpProtocolBuilder;
@@ -33,8 +37,11 @@ import java.util.stream.Stream;
  *   <li>{@code rampSeconds} ramp from 10% to the target rate, default 10</li>
  *   <li>{@code holdSeconds} time at the target rate, default 30</li>
  * </ul>
- * Transactions use random background cards (bg-00001 .. bg-50000, which have a 30-day average),
- * so rules only fire on the realistic share of odd transactions instead of on every request.
+ * Transactions are ordinary purchases of random background cards (bg-00001 .. bg-50000, which have
+ * a 30-day average): in the card's home city, around its typical amount, exactly like the
+ * simulator's auto mode. So almost every request goes the full way through the ML model, and the
+ * test leaves no fake history behind (a first version used random cities: cards then looked like
+ * they had "flown" across the country, and auto mode blocked 17% of transactions afterwards).
  */
 public class CheckTransactionSimulation extends Simulation {
 
@@ -43,24 +50,23 @@ public class CheckTransactionSimulation extends Simulation {
     private static final int RAMP_SECONDS = Integer.getInteger("rampSeconds", 10);
     private static final int HOLD_SECONDS = Integer.getInteger("holdSeconds", 30);
 
-    private static final double[][] CITIES = {
-            {21.0285, 105.8542}, {10.8231, 106.6297}, {16.0544, 108.2022}, {20.8449, 106.6881}, {10.0452, 105.7469}
-    };
-    private static final String[] MERCHANTS = {"SHOPEE", "LAZADA", "GRAB", "CIRCLE_K", "HIGHLANDS", "WINMART", "TGDD", "ATM"};
+    private static final Merchant[] MERCHANTS = Merchant.values();
     private static final AtomicLong SEQUENCE = new AtomicLong();
 
     /** An endless stream of random transaction attributes. */
     private static final Iterator<Map<String, Object>> TRANSACTIONS = Stream.generate(
             (Supplier<Map<String, Object>>) () -> {
                 ThreadLocalRandom rnd = ThreadLocalRandom.current();
-                double[] city = CITIES[rnd.nextInt(CITIES.length)];
+                CardProfile card = CardProfiles.background(1 + rnd.nextInt(CardProfiles.BACKGROUND_COUNT));
+                Location home = card.homeCity().location();
+                long amount = Math.max(10_000, Math.round(card.typicalAmount() * Math.exp(rnd.nextGaussian() * 0.4) / 1000) * 1000);
                 return Map.of(
                         "transactionId", "lt-" + SEQUENCE.incrementAndGet(),
-                        "cardId", "bg-%05d".formatted(1 + rnd.nextInt(50_000)),
-                        "amount", 1000L * rnd.nextLong(20, 3_000),
-                        "merchant", MERCHANTS[rnd.nextInt(MERCHANTS.length)],
-                        "lat", city[0] + rnd.nextDouble(-0.03, 0.03),
-                        "lon", city[1] + rnd.nextDouble(-0.03, 0.03));
+                        "cardId", card.cardId(),
+                        "amount", amount,
+                        "merchant", MERCHANTS[rnd.nextInt(MERCHANTS.length)].name(),
+                        "lat", home.lat() + rnd.nextDouble(-0.03, 0.03),
+                        "lon", home.lon() + rnd.nextDouble(-0.03, 0.03));
             }).iterator();
 
     private final HttpProtocolBuilder httpProtocol = http

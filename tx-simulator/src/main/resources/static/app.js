@@ -159,6 +159,9 @@ async function refreshStats() {
 // ---------- scenarios ----------
 
 let currentRun = null;
+// The server starts a scenario before its HTTP answer (with the runId) reaches us, so the first
+// WebSocket events can arrive before we know they are ours: keep them and replay them.
+let earlyEvents = [];
 
 document.querySelectorAll("[data-scenario]").forEach((button) =>
   button.addEventListener("click", () => startScenario(button.dataset.scenario)));
@@ -175,6 +178,9 @@ async function startScenario(name) {
     $("sc-log").replaceChildren();
     $("sc-rows").replaceChildren();
     $("sc-summary").hidden = true;
+    const mine = earlyEvents.filter((e) => e.runId === currentRun.runId);
+    earlyEvents = [];
+    mine.forEach(onScenarioEvent);
   } catch (e) {
     alert(`Không chạy được kịch bản: ${e.message}`);
     setScenarioButtons(false);
@@ -186,7 +192,11 @@ function setScenarioButtons(disabled) {
 }
 
 function onScenarioEvent(event) {
-  if (!currentRun || event.runId !== currentRun.runId) return;
+  if (!currentRun || event.runId !== currentRun.runId) {
+    earlyEvents.push(event);
+    if (earlyEvents.length > 50) earlyEvents.shift();
+    return;
+  }
   const log = $("sc-log");
   log.append(el("li", {}, event.message));
   log.scrollTop = log.scrollHeight;
